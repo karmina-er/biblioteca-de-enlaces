@@ -4,23 +4,38 @@ const bodyParser = require("body-parser");
 const path = require("path");
 
 const app = express();
-const db = new sqlite3.Database("./database.db");
 
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
+
+// Base de datos SQLite
+const db = new sqlite3.Database("./database.db", (err) => {
+    if (err) console.error("Error abriendo DB:", err.message);
+    else console.log("Base de datos conectada");
+});
 
 // Crear tabla si no existe
 db.run(`CREATE TABLE IF NOT EXISTS enlaces (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     titulo TEXT,
     url TEXT
-)`);
+)`, (err) => {
+    if (err) console.error("Error creando tabla:", err.message);
+});
+
+// Endpoint de prueba
+app.get("/ping", (req, res) => {
+    res.send("pong");
+});
 
 // Página principal
 app.get("/", (req, res) => {
     db.all("SELECT * FROM enlaces ORDER BY id DESC", [], (err, rows) => {
-        if (err) throw err;
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send("Error en la base de datos");
+        }
 
         let html = `
         <!DOCTYPE html>
@@ -74,7 +89,10 @@ app.get("/", (req, res) => {
 app.post("/add", (req, res) => {
     const { titulo, url } = req.body;
     db.run("INSERT INTO enlaces (titulo, url) VALUES (?, ?)", [titulo, url], (err) => {
-        if (err) throw err;
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send("Error agregando enlace");
+        }
         res.redirect("/");
     });
 });
@@ -83,7 +101,10 @@ app.post("/add", (req, res) => {
 app.get("/delete/:id", (req, res) => {
     const id = req.params.id;
     db.run("DELETE FROM enlaces WHERE id = ?", [id], (err) => {
-        if (err) throw err;
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send("Error eliminando enlace");
+        }
         res.redirect("/");
     });
 });
@@ -92,7 +113,12 @@ app.get("/delete/:id", (req, res) => {
 app.get("/edit/:id", (req, res) => {
     const id = req.params.id;
     db.get("SELECT * FROM enlaces WHERE id = ?", [id], (err, row) => {
-        if (err) throw err;
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send("Error consultando enlace");
+        }
+
+        if (!row) return res.status(404).send("Enlace no encontrado");
 
         let html = `
         <!DOCTYPE html>
@@ -129,7 +155,10 @@ app.post("/edit/:id", (req, res) => {
     const id = req.params.id;
     const { titulo, url } = req.body;
     db.run("UPDATE enlaces SET titulo = ?, url = ? WHERE id = ?", [titulo, url, id], (err) => {
-        if (err) throw err;
+        if (err) {
+            console.error(err.message);
+            return res.status(500).send("Error actualizando enlace");
+        }
         res.redirect("/");
     });
 });

@@ -10,7 +10,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
 // Base de datos SQLite
-const db = new sqlite3.Database("./database.db", (err) => {
+const db = new sqlite3.Database("database.db", (err) => {
     if (err) console.error("Error abriendo DB:", err.message);
     else console.log("Base de datos conectada");
 });
@@ -166,3 +166,8 @@ app.post("/edit/:id", (req, res) => {
 // Puerto dinámico para Railway / Render
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Servidor corriendo en puerto ${port}`));
+
+app.get("/ping", (req, res) => {
+    res.send("pong");
+});
+

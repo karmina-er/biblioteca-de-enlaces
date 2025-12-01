@@ -1,5 +1,6 @@
+require('dotenv').config();
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
+const { Pool } = require("pg");
 const bodyParser = require("body-parser");
 const path = require("path");
 
@@ -9,20 +10,27 @@ const app = express();
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-// Base de datos SQLite
-const db = new sqlite3.Database("./database.db", (err) => {
-    if (err) console.error("Error abriendo DB:", err.message);
-    else console.log("Base de datos conectada");
+// Conexión a PostgreSQL
+const db = new Pool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 5432
 });
 
+db.connect()
+  .then(() => console.log("Conectado a PostgreSQL"))
+  .catch(err => console.error("Error conectando a PostgreSQL:", err.message));
+
 // Crear tabla si no existe
-db.run(`CREATE TABLE IF NOT EXISTS enlaces (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    titulo TEXT,
-    url TEXT
-)`, (err) => {
-    if (err) console.error("Error creando tabla:", err.message);
-});
+db.query(`CREATE TABLE IF NOT EXISTS enlaces (
+    id SERIAL PRIMARY KEY,
+    titulo VARCHAR(255),
+    url VARCHAR(255)
+)`)
+.then(() => console.log("Tabla creada o ya existente"))
+.catch(err => console.error("Error creando tabla:", err.message));
 
 // Endpoint de prueba
 app.get("/ping", (req, res) => {
@@ -31,11 +39,9 @@ app.get("/ping", (req, res) => {
 
 // Página principal
 app.get("/", (req, res) => {
-    db.all("SELECT * FROM enlaces ORDER BY id DESC", [], (err, rows) => {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send("Error en la base de datos");
-        }
+    db.query("SELECT * FROM enlaces ORDER BY id DESC")
+      .then(result => {
+        const rows = result.rows;
 
         let html = `
         <!DOCTYPE html>
@@ -49,8 +55,7 @@ app.get("/", (req, res) => {
         </head>
         <body>
             <div class="container my-5">
-                <h1 class="mb-4 text-center"> Biblioteca de Enlaces </h1>
-                
+                <h1 class="mb-4 text-center">Biblioteca de Enlaces</h1>
                 <form method="POST" action="/add" class="mb-5">
                     <div class="mb-3">
                         <input type="text" name="titulo" placeholder="Título del recurso" required class="form-control">
@@ -60,7 +65,6 @@ app.get("/", (req, res) => {
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Agregar enlace</button>
                 </form>
-
                 <ul class="list-group">`;
 
         rows.forEach(row => {
@@ -78,47 +82,45 @@ app.get("/", (req, res) => {
                 </ul>
             </div>
         </body>
-        </html>
-        `;
+        </html>`;
 
         res.send(html);
-    });
+      })
+      .catch(err => {
+        console.error(err.message);
+        res.status(500).send("Error en la base de datos");
+      });
 });
 
 // Agregar enlace
 app.post("/add", (req, res) => {
     const { titulo, url } = req.body;
-    db.run("INSERT INTO enlaces (titulo, url) VALUES (?, ?)", [titulo, url], (err) => {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send("Error agregando enlace");
-        }
-        res.redirect("/");
-    });
+    db.query("INSERT INTO enlaces (titulo, url) VALUES ($1, $2)", [titulo, url])
+      .then(() => res.redirect("/"))
+      .catch(err => {
+          console.error(err.message);
+          res.status(500).send("Error agregando enlace");
+      });
 });
 
 // Eliminar enlace
 app.get("/delete/:id", (req, res) => {
     const id = req.params.id;
-    db.run("DELETE FROM enlaces WHERE id = ?", [id], (err) => {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send("Error eliminando enlace");
-        }
-        res.redirect("/");
-    });
+    db.query("DELETE FROM enlaces WHERE id = $1", [id])
+      .then(() => res.redirect("/"))
+      .catch(err => {
+          console.error(err.message);
+          res.status(500).send("Error eliminando enlace");
+      });
 });
 
 // Mostrar formulario de edición
 app.get("/edit/:id", (req, res) => {
     const id = req.params.id;
-    db.get("SELECT * FROM enlaces WHERE id = ?", [id], (err, row) => {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send("Error consultando enlace");
-        }
-
-        if (!row) return res.status(404).send("Enlace no encontrado");
+    db.query("SELECT * FROM enlaces WHERE id = $1", [id])
+      .then(result => {
+        if (!result.rows.length) return res.status(404).send("Enlace no encontrado");
+        const row = result.rows[0];
 
         let html = `
         <!DOCTYPE html>
@@ -147,20 +149,23 @@ app.get("/edit/:id", (req, res) => {
         </html>
         `;
         res.send(html);
-    });
+      })
+      .catch(err => {
+          console.error(err.message);
+          res.status(500).send("Error consultando enlace");
+      });
 });
 
 // Procesar edición
 app.post("/edit/:id", (req, res) => {
     const id = req.params.id;
     const { titulo, url } = req.body;
-    db.run("UPDATE enlaces SET titulo = ?, url = ? WHERE id = ?", [titulo, url, id], (err) => {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send("Error actualizando enlace");
-        }
-        res.redirect("/");
-    });
+    db.query("UPDATE enlaces SET titulo = $1, url = $2 WHERE id = $3", [titulo, url, id])
+      .then(() => res.redirect("/"))
+      .catch(err => {
+          console.error(err.message);
+          res.status(500).send("Error actualizando enlace");
+      });
 });
 
 // Puerto dinámico para Railway / Render

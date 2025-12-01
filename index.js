@@ -1,10 +1,12 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const Database = require("better-sqlite3");
 const path = require("path");
+const Database = require("better-sqlite3");
+
+// Crear BD con better-sqlite3 (funciona en Railway)
+const db = new Database("./database.db");
 
 const app = express();
-const db = new Database("database.db"); // Compatible con Railway
 
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -18,11 +20,6 @@ db.prepare(`
         url TEXT
     )
 `).run();
-
-// ENDPOINT PARA TESTEAR QUE EL SERVIDOR RESPONDE
-app.get("/ping", (req, res) => {
-    res.send("pong");
-});
 
 // Página principal
 app.get("/", (req, res) => {
@@ -78,21 +75,21 @@ app.get("/", (req, res) => {
 // Agregar enlace
 app.post("/add", (req, res) => {
     const { titulo, url } = req.body;
+
     db.prepare("INSERT INTO enlaces (titulo, url) VALUES (?, ?)").run(titulo, url);
+
     res.redirect("/");
 });
 
 // Eliminar enlace
 app.get("/delete/:id", (req, res) => {
-    const id = req.params.id;
-    db.prepare("DELETE FROM enlaces WHERE id = ?").run(id);
+    db.prepare("DELETE FROM enlaces WHERE id = ?").run(req.params.id);
     res.redirect("/");
 });
 
-// Mostrar formulario de edición
+// Formulario editar
 app.get("/edit/:id", (req, res) => {
-    const id = req.params.id;
-    const row = db.prepare("SELECT * FROM enlaces WHERE id = ?").get(id);
+    const row = db.prepare("SELECT * FROM enlaces WHERE id = ?").get(req.params.id);
 
     let html = `
     <!DOCTYPE html>
@@ -126,11 +123,10 @@ app.get("/edit/:id", (req, res) => {
 
 // Procesar edición
 app.post("/edit/:id", (req, res) => {
-    const id = req.params.id;
     const { titulo, url } = req.body;
 
     db.prepare("UPDATE enlaces SET titulo = ?, url = ? WHERE id = ?")
-      .run(titulo, url, id);
+        .run(titulo, url, req.params.id);
 
     res.redirect("/");
 });
